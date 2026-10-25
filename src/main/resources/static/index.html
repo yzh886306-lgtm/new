@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>图书借阅管理系统</title>
+<!--
+    前端刻意只用原生 HTML + fetch，不引入任何框架：本项目重点在后端，
+    这里只需要看清楚"页面发了什么请求 → 后端返回什么 JSON → 怎么渲染"这一条线。
+    Spring Boot 会把 resources/static 下的文件当静态资源，访问 http://localhost:8080 即可打开。
+-->
+<style>
+    body { font-family: "Microsoft YaHei", sans-serif; margin: 0; background: #f5f6f8; }
+    header { background: #2f54eb; color: #fff; padding: 12px 24px; font-size: 18px; }
+    nav { display: flex; gap: 4px; padding: 12px 24px 0; }
+    nav button { border: none; padding: 8px 20px; cursor: pointer; background: #e4e7ed; border-radius: 4px 4px 0 0; }
+    nav button.active { background: #fff; font-weight: bold; }
+    section { display: none; background: #fff; margin: 0 24px 24px; padding: 16px; }
+    section.active { display: block; }
+    .bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; align-items: center; }
+    input, select { padding: 5px 8px; border: 1px solid #ccc; border-radius: 3px; }
+    button.op { padding: 5px 12px; cursor: pointer; border: 1px solid #2f54eb; background: #fff; color: #2f54eb; border-radius: 3px; }
+    button.op.primary { background: #2f54eb; color: #fff; }
+    button.op.danger { border-color: #f5222d; color: #f5222d; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; }
+    th { background: #fafafa; }
+    .pager { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
+    .tag-red { color: #f5222d; }
+    .tag-green { color: #52c41a; }
+    #toast { position: fixed; top: 16px; left: 50%; transform: translateX(-50%); padding: 8px 20px;
+             border-radius: 4px; color: #fff; display: none; z-index: 10; }
+</style>
+</head>
+<body>
+<header>图书借阅管理系统</header>
+<div id="toast"></div>
+
+<nav>
+    <button data-tab="book" class="active">图书管理</button>
+    <button data-tab="category">分类管理</button>
+    <button data-tab="reader">读者管理</button>
+    <button data-tab="borrow">借阅管理</button>
+</nav>
+
+<!-- ============ 图书 ============ -->
+<section id="book" class="active">
+    <div class="bar">
+        <input id="bookQTitle" placeholder="书名（模糊）">
+        <select id="bookQCategory"><option value="">全部分类</option></select>
+        <button class="op primary" onclick="bookPage.load(1)">查询</button>
+    </div>
+    <div class="bar">
+        <input type="hidden" id="bookId">
+        <input id="bookIsbn" placeholder="ISBN">
+        <input id="bookTitle" placeholder="书名">
+        <input id="bookAuthor" placeholder="作者">
+        <select id="bookCategory"></select>
+        <input id="bookTotal" type="number" min="0" placeholder="馆藏总量" style="width:90px">
+        <button class="op primary" onclick="saveBook()">保存</button>
+        <button class="op" onclick="clearBookForm()">清空（新增）</button>
+    </div>
+    <table>
+        <thead><tr><th>ID</th><th>ISBN</th><th>书名</th><th>作者</th><th>分类</th><th>馆藏/可借</th><th>操作</th></tr></thead>
+        <tbody id="bookRows"></tbody>
+    </table>
+    <div class="pager" id="bookPager"></div>
+</section>
+
+<!-- ============ 分类 ============ -->
+<section id="category">
+    <div class="bar">
+        <input type="hidden" id="catId">
+        <input id="catName" placeholder="分类名">
+        <button class="op primary" onclick="saveCategory()">保存</button>
+        <button class="op" onclick="clearCategoryForm()">清空（新增）</button>
+    </div>
+    <table>
+        <thead><tr><th>ID</th><th>分类名</th><th>创建时间</th><th>操作</th></tr></thead>
+        <tbody id="catRows"></tbody>
+    </table>
+</section>
+
+<!-- ============ 读者 ============ -->
+<section id="reader">
+    <div class="bar">
+        <input id="readerQName" placeholder="姓名（模糊）">
+        <input id="readerQCard" placeholder="借书证号（精确）">
+        <button class="op primary" onclick="readerPage.load(1)">查询</button>
+    </div>
+    <div class="bar">
+        <input type="hidden" id="readerId">
+        <input id="readerCard" placeholder="借书证号">
+        <input id="readerName" placeholder="姓名">
+        <input id="readerPhone" placeholder="手机号（可空）">
+        <input id="readerMax" type="number" min="1" max="20" value="5" style="width:70px" title="最多同时借几本">
+        <button class="op primary" onclick="saveReader()">保存</button>
+        <button class="op" onclick="clearReaderForm()">清空（新增）</button>
+    </div>
+    <table>
+        <thead><tr><th>ID</th><th>借书证号</th><th>姓名</th><th>手机号</th><th>最多可借</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody id="readerRows"></tbody>
+    </table>
+    <div class="pager" id="readerPager"></div>
+</section>
+
+<!-- ============ 借阅 ============ -->
+<section id="borrow">
+    <div class="bar">
+        <b>借书：</b>
+        <input id="borrowBookId" type="number" placeholder="图书 ID" style="width:90px">
+        <input id="borrowReaderId" type="number" placeholder="读者 ID" style="width:90px">
+        <input id="borrowDays" type="number" value="30" min="1" max="60" style="width:70px" title="借阅天数">天
+        <button class="op primary" onclick="doBorrow()">借出</button>
+    </div>
+    <div class="bar">
+        <b>筛选：</b>
+        <input id="borrowQReader" type="number" placeholder="读者 ID" style="width:90px">
+        <input id="borrowQBook" type="number" placeholder="图书 ID" style="width:90px">
+        <select id="borrowQStatus">
+            <option value="">全部状态</option><option value="0">借出中</option><option value="1">已归还</option>
+        </select>
+        <button class="op primary" onclick="borrowPage.load(1)">查询</button>
+    </div>
+    <table>
+        <thead><tr><th>ID</th><th>图书</th><th>读者</th><th>借出时间</th><th>应还时间</th><th>归还时间</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody id="borrowRows"></tbody>
+    </table>
+    <div class="pager" id="borrowPager"></div>
+</section>
+
+<script>
+// ---------------------------------------------------------------
+// 通用请求函数：所有接口都返回 {code, msg, data}，只在这一处判断 code
+// ---------------------------------------------------------------
+async function api(method, url, body) {
+    const opt = { method, headers: {} };
+    if (body !== undefined) {
+        opt.headers['Content-Type'] = 'application/json';   // 告诉后端请求体是 JSON，@RequestBody 才能解析
+        opt.body = JSON.stringify(body);
+    }
+    const res = await fetch(url, opt);
+    const json = await res.json();
+    if (json.code !== 200) {
+        toast(json.msg, false);
+        throw new Error(json.msg);   // 中断调用方后续逻辑（比如不再刷新列表）
+    }
+    return json.data;
+}
+
+// 把对象里有值的字段拼成 ?a=1&b=2，空值不传（后端 <if test="xx != null"> 就不会加这个条件）
+function qs(obj) {
+    const p = new URLSearchParams();
+    Object.entries(obj).forEach(([k, v]) => { if (v !== '' && v !== null && v !== undefined) p.append(k, v); });
+    return '?' + p.toString();
+}
+
+function toast(msg, ok = true) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.background = ok ? '#52c41a' : '#f5222d';
+    t.style.display = 'block';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.style.display = 'none', 2500);
+}
+
+const $ = id => document.getElementById(id);
+const val = id => $(id).value.trim();
+const fmt = t => t ? t.replace('T', ' ').substring(0, 16) : '';
+// 防 XSS：用户录入的书名如果含 <script>，直接拼进 innerHTML 会被执行
+const esc = s => s == null ? '' : String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+// 分页器：传入"取第 n 页数据并渲染"的函数，返回 {load}
+function pager(elId, size, fetchPage) {
+    let page = 1;
+    async function load(p = page) {
+        page = p;
+        const data = await fetchPage(page, size);
+        const pages = Math.max(1, Math.ceil(data.total / size));
+        $(elId).innerHTML =
+            `共 ${data.total} 条，第 ${page}/${pages} 页
+             <button class="op" ${page <= 1 ? 'disabled' : ''} onclick="${elId}Obj.load(${page - 1})">上一页</button>
+             <button class="op" ${page >= pages ? 'disabled' : ''} onclick="${elId}Obj.load(${page + 1})">下一页</button>`;
+    }
+    const obj = { load, reload: () => load(page) };
+    window[elId + 'Obj'] = obj;
+    return obj;
+}
+
+// 标签页切换
+document.querySelectorAll('nav button').forEach(btn => btn.onclick = () => {
+    document.querySelectorAll('nav button, section').forEach(e => e.classList.remove('active'));
+    btn.classList.add('active');
+    $(btn.dataset.tab).classList.add('active');
+    ({ book: () => bookPage.reload(), category: loadCategories, reader: () => readerPage.reload(), borrow: () => borrowPage.reload() })[btn.dataset.tab]();
+});
+
+// ---------------------------------------------------------------
+// 分类：GET 列表 / POST 新增 / PUT 修改 / DELETE 删除
+// ---------------------------------------------------------------
+async function loadCategories() {
+    const list = await api('GET', '/api/categories');
+    $('catRows').innerHTML = list.map(c => `
+        <tr><td>${c.id}</td><td>${esc(c.name)}</td><td>${fmt(c.createTime)}</td>
+            <td><button class="op" onclick='editCategory(${JSON.stringify(c)})'>编辑</button>
+                <button class="op danger" onclick="deleteCategory(${c.id})">删除</button></td></tr>`).join('');
+    // 图书表单和图书筛选的下拉框也用这份数据
+    const opts = list.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+    $('bookCategory').innerHTML = opts;
+    $('bookQCategory').innerHTML = '<option value="">全部分类</option>' + opts;
+}
+function editCategory(c) { $('catId').value = c.id; $('catName').value = c.name; }
+function clearCategoryForm() { $('catId').value = ''; $('catName').value = ''; }
+async function saveCategory() {
+    const id = val('catId'), body = { name: val('catName') };
+    // 有 id 是修改（PUT /{id}），没有是新增（POST）
+    id ? await api('PUT', `/api/categories/${id}`, body) : await api('POST', '/api/categories', body);
+    toast('保存成功'); clearCategoryForm(); loadCategories();
+}
+async function deleteCategory(id) {
+    if (!confirm('确定删除该分类？')) return;
+    await api('DELETE', `/api/categories/${id}`);
+    toast('删除成功'); loadCategories();
+}
+
+// ---------------------------------------------------------------
+// 图书：分页 + 条件查询
+// ---------------------------------------------------------------
+const bookPage = pager('bookPager', 5, async (page, size) => {
+    const data = await api('GET', '/api/books' + qs({ page, size, title: val('bookQTitle'), categoryId: val('bookQCategory') }));
+    $('bookRows').innerHTML = data.list.map(b => `
+        <tr><td>${b.id}</td><td>${esc(b.isbn)}</td><td>${esc(b.title)}</td><td>${esc(b.author)}</td>
+            <td>${esc(b.categoryName)}</td><td>${b.totalStock} / ${b.availableStock}</td>
+            <td><button class="op" onclick='editBook(${JSON.stringify(b)})'>编辑</button>
+                <button class="op danger" onclick="deleteBook(${b.id})">删除</button></td></tr>`).join('');
+    return data;
+});
+function editBook(b) {
+    $('bookId').value = b.id; $('bookIsbn').value = b.isbn; $('bookTitle').value = b.title;
+    $('bookAuthor').value = b.author || ''; $('bookCategory').value = b.categoryId; $('bookTotal').value = b.totalStock;
+}
+function clearBookForm() { ['bookId', 'bookIsbn', 'bookTitle', 'bookAuthor', 'bookTotal'].forEach(i => $(i).value = ''); }
+async function saveBook() {
+    const id = val('bookId');
+    const body = {
+        isbn: val('bookIsbn'), title: val('bookTitle'), author: val('bookAuthor'),
+        categoryId: val('bookCategory') || null,
+        totalStock: val('bookTotal') === '' ? null : Number(val('bookTotal'))
+    };
+    id ? await api('PUT', `/api/books/${id}`, body) : await api('POST', '/api/books', body);
+    toast('保存成功'); clearBookForm(); bookPage.reload();
+}
+async function deleteBook(id) {
+    if (!confirm('确定删除该图书？')) return;
+    await api('DELETE', `/api/books/${id}`);
+    toast('删除成功'); bookPage.reload();
+}
+
+// ---------------------------------------------------------------
+// 读者：分页 + 冻结/解冻（PATCH）
+// ---------------------------------------------------------------
+const readerPage = pager('readerPager', 5, async (page, size) => {
+    const data = await api('GET', '/api/readers' + qs({ page, size, name: val('readerQName'), cardNo: val('readerQCard') }));
+    $('readerRows').innerHTML = data.list.map(r => `
+        <tr><td>${r.id}</td><td>${esc(r.cardNo)}</td><td>${esc(r.name)}</td><td>${esc(r.phone)}</td><td>${r.maxBorrow}</td>
+            <td>${r.status === 1 ? '<span class="tag-green">正常</span>' : '<span class="tag-red">冻结</span>'}</td>
+            <td><button class="op" onclick='editReader(${JSON.stringify(r)})'>编辑</button>
+                <button class="op" onclick="toggleReader(${r.id}, ${r.status === 1 ? 0 : 1})">${r.status === 1 ? '冻结' : '解冻'}</button>
+                <button class="op danger" onclick="deleteReader(${r.id})">删除</button></td></tr>`).join('');
+    return data;
+});
+function editReader(r) {
+    $('readerId').value = r.id; $('readerCard').value = r.cardNo; $('readerName').value = r.name;
+    $('readerPhone').value = r.phone || ''; $('readerMax').value = r.maxBorrow;
+}
+function clearReaderForm() { ['readerId', 'readerCard', 'readerName', 'readerPhone'].forEach(i => $(i).value = ''); $('readerMax').value = 5; }
+async function saveReader() {
+    const id = val('readerId');
+    const body = { cardNo: val('readerCard'), name: val('readerName'), phone: val('readerPhone'), maxBorrow: Number(val('readerMax')) };
+    id ? await api('PUT', `/api/readers/${id}`, body) : await api('POST', '/api/readers', body);
+    toast('保存成功'); clearReaderForm(); readerPage.reload();
+}
+async function toggleReader(id, status) {
+    await api('PATCH', `/api/readers/${id}/status?status=${status}`);
+    toast('操作成功'); readerPage.reload();
+}
+async function deleteReader(id) {
+    if (!confirm('确定删除该读者？')) return;
+    await api('DELETE', `/api/readers/${id}`);
+    toast('删除成功'); readerPage.reload();
+}
+
+// ---------------------------------------------------------------
+// 借阅：借书 POST，还书 PUT /{id}/return
+// ---------------------------------------------------------------
+const borrowPage = pager('borrowPager', 10, async (page, size) => {
+    const data = await api('GET', '/api/borrows' + qs({
+        page, size, readerId: val('borrowQReader'), bookId: val('borrowQBook'), status: val('borrowQStatus')
+    }));
+    $('borrowRows').innerHTML = data.list.map(r => {
+        const state = r.status === 1 ? '<span class="tag-green">已归还</span>'
+                    : r.overdue ? '<span class="tag-red">已逾期</span>' : '借出中';
+        return `<tr><td>${r.id}</td><td>${esc(r.bookTitle)} (#${r.bookId})</td>
+            <td>${esc(r.readerName)} / ${esc(r.cardNo)} (#${r.readerId})</td>
+            <td>${fmt(r.borrowTime)}</td><td>${fmt(r.dueTime)}</td><td>${fmt(r.returnTime)}</td><td>${state}</td>
+            <td>${r.status === 0 ? `<button class="op primary" onclick="doReturn(${r.id})">还书</button>` : ''}</td></tr>`;
+    }).join('');
+    return data;
+});
+async function doBorrow() {
+    await api('POST', '/api/borrows', {
+        bookId: val('borrowBookId') || null, readerId: val('borrowReaderId') || null, days: Number(val('borrowDays'))
+    });
+    toast('借书成功'); borrowPage.load(1);
+}
+async function doReturn(id) {
+    await api('PUT', `/api/borrows/${id}/return`);
+    toast('还书成功'); borrowPage.reload();
+}
+
+// 首屏：先加载分类（下拉框要用），再加载图书
+loadCategories().then(() => bookPage.load(1));
+</script>
+</body>
+</html>
