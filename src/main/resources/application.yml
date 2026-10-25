@@ -1,0 +1,28 @@
+server:
+  port: 8080
+
+spring:
+  datasource:
+    # createDatabaseIfNotExist=true：库不存在时由驱动自动建库，省去手动 CREATE DATABASE
+    url: jdbc:mysql://localhost:3306/library_crud?createDatabaseIfNotExist=true&useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    # 密码从环境变量 MYSQL_PASSWORD 读取，未设置时默认 root（不要把真实密码提交到 git）
+    password: ${MYSQL_PASSWORD:root}
+  sql:
+    init:
+      # 每次启动执行 schema.sql（建表 IF NOT EXISTS）+ data.sql（INSERT IGNORE），可重复执行
+      mode: always
+      encoding: UTF-8
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  # XML 里 resultType 可直接写类名 Book / BookVO，不用写全限定名
+  type-aliases-package: com.library.entity,com.library.vo
+  configuration:
+    # 下划线列名 total_stock 自动映射到驼峰属性 totalStock
+    map-underscore-to-camel-case: true
+
+logging:
+  level:
+    # 打印 Mapper 执行的 SQL 与参数，学习时观察"一次请求到底发了几条 SQL"
+    com.library.mapper: debug
