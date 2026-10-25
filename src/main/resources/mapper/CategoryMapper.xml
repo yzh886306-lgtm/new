@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!-- namespace 必须是 Mapper 接口全限定名，每条 SQL 的 id 必须等于接口方法名 -->
+<mapper namespace="com.library.mapper.CategoryMapper">
+
+    <select id="selectAll" resultType="Category">
+        SELECT id, name, create_time FROM category ORDER BY id
+    </select>
+
+    <select id="selectById" resultType="Category">
+        SELECT id, name, create_time FROM category WHERE id = #{id}
+    </select>
+
+    <select id="selectByName" resultType="Category">
+        SELECT id, name, create_time FROM category WHERE name = #{name}
+    </select>
+
+    <!-- useGeneratedKeys + keyProperty：插入后把数据库生成的自增 id 回填到参数对象的 id 属性 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO category (name) VALUES (#{name})
+    </insert>
+
+    <update id="update">
+        UPDATE category SET name = #{name} WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM category WHERE id = #{id}
+    </delete>
+</mapper>

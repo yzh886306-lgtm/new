@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.library.mapper.ReaderMapper">
+
+    <sql id="pageWhere">
+        <where>
+            <if test="name != null and name != ''">
+                AND name LIKE CONCAT('%', #{name}, '%')
+            </if>
+            <if test="cardNo != null and cardNo != ''">
+                AND card_no = #{cardNo}
+            </if>
+        </where>
+    </sql>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*) FROM reader
+        <include refid="pageWhere"/>
+    </select>
+
+    <select id="selectPage" resultType="Reader">
+        SELECT * FROM reader
+        <include refid="pageWhere"/>
+        ORDER BY id DESC
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="selectById" resultType="Reader">
+        SELECT * FROM reader WHERE id = #{id}
+    </select>
+
+    <select id="selectByCardNo" resultType="Reader">
+        SELECT * FROM reader WHERE card_no = #{cardNo}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO reader (card_no, name, phone, max_borrow, status)
+        VALUES (#{cardNo}, #{name}, #{phone}, #{maxBorrow}, 1)
+    </insert>
+
+    <!-- 不更新 status：冻结/解冻只能走 updateStatus -->
+    <update id="update">
+        UPDATE reader
+        SET card_no = #{cardNo}, name = #{name}, phone = #{phone}, max_borrow = #{maxBorrow}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateStatus">
+        UPDATE reader SET status = #{status} WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM reader WHERE id = #{id}
+    </delete>
+</mapper>

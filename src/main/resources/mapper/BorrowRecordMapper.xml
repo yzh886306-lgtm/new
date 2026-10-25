@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.library.mapper.BorrowRecordMapper">
+
+    <sql id="pageWhere">
+        <where>
+            <if test="readerId != null">AND r.reader_id = #{readerId}</if>
+            <if test="bookId != null">AND r.book_id = #{bookId}</if>
+            <if test="status != null">AND r.status = #{status}</if>
+        </where>
+    </sql>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*) FROM borrow_record r
+        <include refid="pageWhere"/>
+    </select>
+
+    <!--
+        三表联查：借阅记录只存 book_id / reader_id，列表要显示书名和读者姓名。
+        overdue 由 SQL 当场算：借出中 且 应还时间已过 —— 不存进表，因为"是否逾期"随时间变化，存了就会过时。
+    -->
+    <select id="selectPage" resultType="BorrowRecordVO">
+        SELECT r.id, r.book_id, b.title AS book_title,
+               r.reader_id, d.name AS reader_name, d.card_no,
+               r.borrow_time, r.due_time, r.return_time, r.status,
+               (r.status = 0 AND r.due_time &lt; NOW()) AS overdue
+        FROM borrow_record r
+        LEFT JOIN book b ON r.book_id = b.id
+        LEFT JOIN reader d ON r.reader_id = d.id
+        <include refid="pageWhere"/>
+        ORDER BY r.id DESC
+        LIMIT #{size} OFFSET #{offset}
+    </select>
+
+    <select id="selectById" resultType="BorrowRecord">
+        SELECT * FROM borrow_record WHERE id = #{id}
+    </select>
+
+    <!-- 以下三条都能命中联合索引 idx_borrow_reader_status (reader_id, status) -->
+    <select id="countUnreturnedByReader" resultType="long">
+        SELECT COUNT(*) FROM borrow_record WHERE reader_id = #{readerId} AND status = 0
+    </select>
+
+    <select id="countOverdueByReader" resultType="long">
+        SELECT COUNT(*) FROM borrow_record
+        WHERE reader_id = #{readerId} AND status = 0 AND due_time &lt; NOW()
+    </select>
+
+    <select id="countUnreturned" resultType="long">
+        SELECT COUNT(*) FROM borrow_record
+        WHERE reader_id = #{readerId} AND status = 0 AND book_id = #{bookId}
+    </select>
+
+    <select id="countUnreturnedByBook" resultType="long">
+        SELECT COUNT(*) FROM borrow_record WHERE book_id = #{bookId} AND status = 0
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO borrow_record (book_id, reader_id, borrow_time, due_time, status)
+        VALUES (#{bookId}, #{readerId}, #{borrowTime}, #{dueTime}, 0)
+    </insert>
+
+    <!-- 和 decreaseStock 同一个思路：把"还没还"这个前提写进 WHERE，两个请求同时还同一条，只有一个影响 1 行 -->
+    <update id="markReturned">
+        UPDATE borrow_record SET status = 1, return_time = NOW()
+        WHERE id = #{id} AND status = 0
+    </update>
+</mapper>
