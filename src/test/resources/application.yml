@@ -1,0 +1,17 @@
+spring:
+  datasource:
+    # H2 内存库 + MySQL 兼容模式：复用 main 下的 schema.sql / data.sql，测试不依赖本机 MySQL
+    url: jdbc:h2:mem:library;MODE=MySQL;DATABASE_TO_LOWER=TRUE;NON_KEYWORDS=USER
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  sql:
+    init:
+      mode: always
+      encoding: UTF-8
+
+mybatis:
+  mapper-locations: classpath:mapper/*.xml
+  type-aliases-package: com.library.entity,com.library.vo
+  configuration:
+    map-underscore-to-camel-case: true
